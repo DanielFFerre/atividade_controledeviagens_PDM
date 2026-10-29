@@ -46,10 +46,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val motoristaRepository = MotoristaRepository(applicationContext)
+        val viagemRepository = ViagemRepository(applicationContext)
 
         setContent {
             Atividade_controledeviagensTheme() {
-                AppControleDeViagens(motoristaRepository)
+                AppControleDeViagens(motoristaRepository, viagemRepository)
             }
         }
     }
@@ -57,13 +58,16 @@ class MainActivity : ComponentActivity() {
 
 // --- COMPOSABLE DE GESTÃO DE ESTADO E NAVEGAÇÃO ---
 @Composable
-fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
+fun AppControleDeViagens(
+    motoristaRepository: MotoristaRepository,
+    viagemRepository: ViagemRepository
+) {
     val navController = rememberNavController()
 
-    // Lista central de viagens (Estado Içado)
-    val viagens = remember { mutableStateListOf<Viagem>() }
+    // Lista central de viagens, inicializada com os dados do banco
+    var viagens by remember { mutableStateOf(viagemRepository.listar()) }
 
-    // Variáveis de estado do formulário (Estado Içado)
+    // Variáveis de estado do formulário
     var data by remember { mutableStateOf("") }
     var kmInicial by remember { mutableStateOf("") }
     var kmFinal by remember { mutableStateOf("") }
@@ -71,6 +75,7 @@ fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
     var tipoCombustivel by remember { mutableStateOf("") }
     var pedagio by remember { mutableStateOf("") }
     var valorCombustivel by remember { mutableStateOf("") }
+    var mensagemErro by remember { mutableStateOf("") }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         NavHost(
@@ -98,6 +103,7 @@ fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
                     tipoCombustivel = tipoCombustivel, onTipoCombustivelChange = { tipoCombustivel = it },
                     pedagio = pedagio, onPedagioChange = { pedagio = it },
                     valorCombustivel = valorCombustivel, onValorCombustivelChange = { valorCombustivel = it },
+                    mensagemErro = mensagemErro,
                     onCadastrar = {
                         val kmIni = kmInicial.toDoubleOrNull() ?: 0.0
                         val kmFim = kmFinal.toDoubleOrNull() ?: 0.0
@@ -106,7 +112,7 @@ fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
                         val valComb = valorCombustivel.toDoubleOrNull() ?: 0.0
 
                         if (data.isNotBlank()) {
-                            val novaViagem = Viagem(
+                            val sucesso = viagemRepository.inserir(
                                 data = data,
                                 kmInicial = kmIni,
                                 kmFinal = kmFim,
@@ -115,19 +121,28 @@ fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
                                 pedagio = ped,
                                 valorCombustivel = valComb
                             )
-                            viagens.add(novaViagem)
-
-                            // Limpar campos
-                            data = ""
-                            kmInicial = ""
-                            kmFinal = ""
-                            litros = ""
-                            tipoCombustivel = ""
-                            pedagio = ""
-                            valorCombustivel = ""
-
-                            // Regressar à lista
-                            navController.navigateUp()
+                            
+                            if (sucesso) {
+                                // Atualiza a lista lendo do banco novamente
+                                viagens = viagemRepository.listar()
+                                
+                                // Limpar campos
+                                data = ""
+                                kmInicial = ""
+                                kmFinal = ""
+                                litros = ""
+                                tipoCombustivel = ""
+                                pedagio = ""
+                                valorCombustivel = ""
+                                mensagemErro = ""
+    
+                                // Regressar à lista
+                                navController.navigateUp()
+                            } else {
+                                mensagemErro = "Erro ao salvar no banco de dados."
+                            }
+                        } else {
+                            mensagemErro = "A data não pode estar vazia."
                         }
                     },
                     navController = navController
@@ -271,6 +286,7 @@ fun TelaCadastroViagem(
     tipoCombustivel: String, onTipoCombustivelChange: (String) -> Unit,
     pedagio: String, onPedagioChange: (String) -> Unit,
     valorCombustivel: String, onValorCombustivelChange: (String) -> Unit,
+    mensagemErro: String,
     onCadastrar: () -> Unit,
     navController: NavController
 ) {
@@ -342,6 +358,17 @@ fun TelaCadastroViagem(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+        
+        if (mensagemErro.isNotEmpty()) {
+            item {
+                Text(
+                    text = mensagemErro,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+        }
+        
         item {
             Row(
                 modifier = Modifier
