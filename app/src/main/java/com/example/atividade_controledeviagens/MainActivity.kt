@@ -18,6 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.atividade_controledeviagens.ui.theme.Atividade_controledeviagensTheme
+import kotlinx.coroutines.launch
 
 // --- MODELO ---
 class Viagem(
@@ -44,9 +45,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val motoristaRepository = MotoristaRepository(applicationContext)
+
         setContent {
             Atividade_controledeviagensTheme() {
-                AppControleDeViagens()
+                AppControleDeViagens(motoristaRepository)
             }
         }
     }
@@ -54,7 +57,7 @@ class MainActivity : ComponentActivity() {
 
 // --- COMPOSABLE DE GESTÃO DE ESTADO E NAVEGAÇÃO ---
 @Composable
-fun AppControleDeViagens() {
+fun AppControleDeViagens(motoristaRepository: MotoristaRepository) {
     val navController = rememberNavController()
 
     // Lista central de viagens (Estado Içado)
@@ -80,7 +83,8 @@ fun AppControleDeViagens() {
             composable("lista") {
                 TelaListaViagens(
                     viagens = viagens,
-                    navController = navController
+                    navController = navController,
+                    motoristaRepository = motoristaRepository
                 )
             }
 
@@ -135,7 +139,21 @@ fun AppControleDeViagens() {
 
 // --- ECRÃ 1: LISTAGEM ---
 @Composable
-fun TelaListaViagens(viagens: List<Viagem>, navController: NavController) {
+fun TelaListaViagens(
+    viagens: List<Viagem>, 
+    navController: NavController,
+    motoristaRepository: MotoristaRepository
+) {
+    val scope = rememberCoroutineScope()
+    val nomeSalvo by motoristaRepository.motoristaFlow.collectAsState(initial = "")
+    var nomeDigitado by remember { mutableStateOf("") }
+    
+    // Atualiza o campo digitado quando o nome salvo for carregado
+    LaunchedEffect(nomeSalvo) {
+        if (nomeDigitado.isEmpty() && nomeSalvo.isNotEmpty()) {
+            nomeDigitado = nomeSalvo
+        }
+    }
 
     // Cálculos de resumo no ecrã de lista
     val totalKm = viagens.sumOf { it.calcularDistancia() }
@@ -153,6 +171,43 @@ fun TelaListaViagens(viagens: List<Viagem>, navController: NavController) {
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        // Seção do Motorista (DataStore Preferences)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Motorista", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = nomeDigitado,
+                    onValueChange = { nomeDigitado = it },
+                    label = { Text("Nome do Motorista") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            motoristaRepository.salvarMotorista(nomeDigitado)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Salvar Motorista")
+                }
+                
+                if (nomeSalvo.isNotBlank()) {
+                    Text(
+                        text = "Motorista atual: $nomeSalvo",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        }
 
         // Cartão de Resumo
         Card(
@@ -186,7 +241,7 @@ fun TelaListaViagens(viagens: List<Viagem>, navController: NavController) {
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        // Listagem de Viagens com LazyColumn (Manteve-se a sua implementação correta)
+        // Listagem de Viagens com LazyColumn
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(viagens) { viagem ->
                 Card(modifier = Modifier.fillMaxWidth()) {
